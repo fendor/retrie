@@ -59,8 +59,10 @@ import Language.Haskell.GHC.ExactPrint hiding
   , transferEntryDPT
   , transferEntryDP
   )
+#if __GLASGOW_HASKELL__ >= 902
+import Language.Haskell.GHC.ExactPrint.Types (showGhc)
+#else
 import Language.Haskell.GHC.ExactPrint.Annotate (Annotate)
-import qualified Language.Haskell.GHC.ExactPrint.Parsers as Parsers
 import Language.Haskell.GHC.ExactPrint.Types
   ( AnnConName(..)
   , DeltaPos(..)
@@ -71,6 +73,9 @@ import Language.Haskell.GHC.ExactPrint.Types
   , mkAnnKey
   )
 import Language.Haskell.GHC.ExactPrint.Utils (annLeadingCommentEntryDelta, showGhc)
+#endif
+
+import qualified Language.Haskell.GHC.ExactPrint.Parsers as Parsers
 
 import Retrie.ExactPrint.Annotated
 import Retrie.Fixity
@@ -144,7 +149,7 @@ fixOneEntry
 fixOneEntry e x = do
   anns <- getAnnsT
   let
-    zeros = DP (0,0)
+    zeros = SameLine 0
     (DP (xr,xc), DP (actualRow,_)) =
       case M.lookup (mkAnnKey x) anns of
         Nothing -> (zeros, zeros)

@@ -5,6 +5,7 @@
 --
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeFamilies #-}
 module Retrie.GHC
   ( module Retrie.GHC
 #if __GLASGOW_HASKELL__ < 900
@@ -38,6 +39,9 @@ module Retrie.GHC
   , module GHC.Hs
   , module GHC.Parser.Annotation
   , module GHC.Types.Basic
+#if __GLASGOW_HASKELL__ >= 902
+  , module GHC.Types.Fixity
+#endif
   , module GHC.Types.Name
   , module GHC.Types.Name.Reader
   , module GHC.Types.SrcLoc
@@ -83,7 +87,12 @@ import GHC.Parser.Annotation
 import GHC.Types.Basic
 import GHC.Types.Name
 import GHC.Types.Name.Reader
+#if __GLASGOW_HASKELL__ >= 902
 import GHC.Types.SrcLoc
+import GHC.Types.Fixity
+#else
+import GHC.Types.SrcLoc
+#endif
 import GHC.Types.Unique
 import GHC.Types.Unique.FM
 import GHC.Types.Unique.Set
@@ -97,7 +106,7 @@ import Data.Maybe
 type HsModule = HS.HsModule GhcPs
 #endif
 
-cLPat :: Located (Pat (GhcPass p)) -> LPat (GhcPass p)
+cLPat :: XRec (GhcPass p) (Pat (GhcPass p)) -> LPat (GhcPass p)
 #if __GLASGOW_HASKELL__ == 808
 cLPat = composeSrcSpan
 #else
@@ -105,7 +114,7 @@ cLPat = id
 #endif
 
 -- | Only returns located pat if there is a genuine location available.
-dLPat :: LPat (GhcPass p) -> Maybe (Located (Pat (GhcPass p)))
+dLPat :: LPat (GhcPass p) -> Maybe (XRec (GhcPass p) (Pat (GhcPass p)))
 #if __GLASGOW_HASKELL__ == 808
 dLPat (XPat (L s p)) = Just $ L s $ stripSrcSpanPat p
 dLPat _ = Nothing
@@ -114,7 +123,7 @@ dLPat = Just
 #endif
 
 -- | Will always give a location, but it may be noSrcSpan.
-dLPatUnsafe :: LPat (GhcPass p) -> Located (Pat (GhcPass p))
+dLPatUnsafe :: LPat (GhcPass p) -> XRec (GhcPass p) (Pat (GhcPass p))
 #if __GLASGOW_HASKELL__ == 808
 dLPatUnsafe = dL
 #else
@@ -134,15 +143,15 @@ rdrFS rdr = occNameFS (occName rdr)
 fsDot :: FastString
 fsDot = mkFastString "."
 
-varRdrName :: HsExpr p -> Maybe (Located (IdP p))
+varRdrName :: HsExpr (GhcPass p) -> Maybe (XRec (GhcPass p) (IdP (GhcPass p)))
 varRdrName (HsVar _ n) = Just n
 varRdrName _ = Nothing
 
-tyvarRdrName :: HsType p -> Maybe (Located (IdP p))
+tyvarRdrName :: HsType (GhcPass p) -> Maybe (XRec (GhcPass p) (IdP (GhcPass p)))
 tyvarRdrName (HsTyVar _ _ n) = Just n
 tyvarRdrName _ = Nothing
 
-fixityDecls :: HsModule -> [(Located RdrName, Fixity)]
+fixityDecls :: HsModule -> [(LocatedN RdrName, Fixity)]
 fixityDecls m =
   [ (nm, fixity)
   | L _ (SigD _ (FixSig _ (FixitySig _ nms fixity))) <- hsmodDecls m
@@ -174,7 +183,7 @@ ruleBindersToQs bs = catMaybes
 #if __GLASGOW_HASKELL__ < 900
 tyBindersToLocatedRdrNames :: [LHsTyVarBndr GhcPs] -> [Located RdrName]
 #else
-tyBindersToLocatedRdrNames :: [LHsTyVarBndr () GhcPs] -> [Located RdrName]
+tyBindersToLocatedRdrNames :: [LHsTyVarBndr () GhcPs] -> [LocatedN RdrName]
 #endif
 tyBindersToLocatedRdrNames vars = catMaybes
   [ case var of

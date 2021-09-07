@@ -22,18 +22,18 @@ newtype FixityEnv = FixityEnv
 
 instance Semigroup FixityEnv where
   -- | 'mappend' for 'FixityEnv' is right-biased
-  (<>) = mappend
+  FixityEnv e1 <> FixityEnv e2 = FixityEnv (plusFsEnv e1 e2)
 
 instance Monoid FixityEnv where
   mempty = mkFixityEnv []
   -- | 'mappend' for 'FixityEnv' is right-biased
-  mappend (FixityEnv e1) (FixityEnv e2) = FixityEnv (plusFsEnv e1 e2)
+  mappend = (<>)
 
 lookupOp :: LHsExpr GhcPs -> FixityEnv -> Fixity
 lookupOp (L _ e) | Just n <- varRdrName e = lookupOpRdrName n
 lookupOp _ = error "lookupOp: called with non-variable!"
 
-lookupOpRdrName :: Located RdrName -> FixityEnv -> Fixity
+lookupOpRdrName :: LocatedN RdrName -> FixityEnv -> Fixity
 lookupOpRdrName (L _ n) (FixityEnv env) =
   maybe defaultFixity snd $ lookupFsEnv env (occNameFS $ occName n)
 

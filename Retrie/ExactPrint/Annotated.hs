@@ -3,9 +3,11 @@
 -- This source code is licensed under the MIT license found in the
 -- LICENSE file in the root directory of this source tree.
 --
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ConstraintKinds, AllowAmbiguousTypes #-}
 module Retrie.ExactPrint.Annotated
   ( -- * Annotated
     Annotated
@@ -42,11 +44,24 @@ import Language.Haskell.GHC.ExactPrint hiding
   , transferEntryDPT
   , transferEntryDP
   )
+#if __GLASGOW_HASKELL__ >= 902
+import Language.Haskell.GHC.ExactPrint.ExactPrint (ExactPrint)
+#else
 import Language.Haskell.GHC.ExactPrint.Annotate (Annotate)
 import Language.Haskell.GHC.ExactPrint.Types (emptyAnns)
+#endif
 
 import Retrie.GHC
 import Retrie.SYB
+
+#if __GLASGOW_HASKELL__ >= 902
+type Anns = ()
+
+emptyAnns :: Anns
+emptyAnns = ()
+#else
+type ExactPrint = Annotate
+#endif
 
 -- Annotated -----------------------------------------------------------------
 
@@ -56,7 +71,7 @@ type AnnotatedHsType = Annotated (LHsType GhcPs)
 type AnnotatedImport = Annotated (LImportDecl GhcPs)
 type AnnotatedImports = Annotated [LImportDecl GhcPs]
 type AnnotatedModule = Annotated (Located HsModule)
-type AnnotatedPat = Annotated (Located (Pat GhcPs))
+type AnnotatedPat = Annotated (LocatedA (Pat GhcPs))
 type AnnotatedStmt = Annotated (LStmt GhcPs (LHsExpr GhcPs))
 
 -- | 'Annotated' packages an AST fragment with the annotations necessary to
@@ -90,7 +105,11 @@ instance (Data ast, Monoid ast) => Monoid (Annotated ast) where
   mempty = Annotated mempty emptyAnns 0
   mappend a1 (Annotated ast2 anns _) =
     runIdentity $ transformA a1 $ \ ast1 ->
+#if __GLASGOW_HASKELL__ >= 902
+      mappend ast1 <$> pure ast2
+#else
       mappend ast1 <$> graftT anns ast2
+#endif
 
 -- | Construct an 'Annotated'.
 -- This should really only be used in the parsing functions, hence the scary name.
@@ -102,8 +121,14 @@ unsafeMkA = Annotated
 transformA
   :: Monad m => Annotated ast1 -> (ast1 -> TransformT m ast2) -> m (Annotated ast2)
 transformA (Annotated ast anns seed) f = do
+#if __GLASGOW_HASKELL__ >= 902
+  (ast', seed',_) <- runTransformFromT seed (f ast)
+  let anns' = emptyAnns
+#else
   (ast',(anns',seed'),_) <- runTransformFromT seed anns (f ast)
+#endif
   return $ Annotated ast' anns' seed'
+
 
 -- | Graft an 'Annotated' thing into the current transformation.
 -- The resulting AST will have proper annotations within the 'TransformT'
@@ -118,7 +143,13 @@ transformA (Annotated ast anns seed) f = do
 -- >     return [d1, d2]
 --
 graftA :: (Data ast, Monad m) => Annotated ast -> TransformT m ast
-graftA (Annotated x anns _) = graftT anns x
+graftA (Annotated x anns _) =
+#if __GLASGOW_HASKELL__ >= 902
+  pure x
+#else
+  graftT anns x
+#endif
+
 
 -- | Encapsulate something in the current transformation into an 'Annotated'
 -- thing. This is the inverse of 'graftT'. For example:
@@ -130,7 +161,7 @@ graftA (Annotated x anns _) = graftT anns x
 -- >   return (y, ys)
 --
 pruneA :: (Data ast, Monad m) => ast -> TransformT m (Annotated ast)
-pruneA ast = Annotated ast <$> getAnnsT <*> gets snd
+pruneA ast = Annotated ast <$> undefined <*> undefined
 
 -- | Trim the annotation data to only include annotations for 'ast'.
 -- (Usually, the annotation data is a superset of what is necessary.)
@@ -146,5 +177,10 @@ trimA = runIdentity . transformA nil . const . graftA
     nil = mempty
 
 -- | Exactprint an 'Annotated' thing.
-printA :: Annotate ast => Annotated (Located ast) -> String
-printA (Annotated ast anns _) = exactPrint ast anns
+printA :: ExactPrint ast => Annotated (Located ast) -> String
+printA (Annotated ast anns _) =
+#if __GLASGOW_HASKELL__ >= 902
+  exactPrint ast
+#else
+  exactPrint ast anns
+#endif
